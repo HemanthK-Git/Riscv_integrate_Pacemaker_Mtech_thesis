@@ -810,46 +810,46 @@ module instruction_memory (
     reg [31:0] inst_memory [1023:0]; // 1024 words of 32-bit memory
     integer i;
 
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            inst_memory[0] <= 32'h00500113; 
-            inst_memory[1] <= 32'h00C00193; 
-            inst_memory[2] <= 32'hFF718393;
-            inst_memory[3] <= 32'h0023E233;
-            inst_memory[4] <= 32'h0041F2B3;
-            inst_memory[5] <= 32'h004282B3;
-            inst_memory[6] <= 32'h02728863;
-            inst_memory[7] <= 32'h0041A233;
-            inst_memory[8] <= 32'h00020463;
-            inst_memory[9] <= 32'h00000293;
-            inst_memory[10] <= 32'h0023A233;
-            inst_memory[11] <= 32'h005203B3;
-            inst_memory[12] <= 32'h402383B3;
-            inst_memory[13] <= 32'h0471AA23;
-            inst_memory[14] <= 32'h06002103;
-            inst_memory[15] <= 32'h005104B3;
-            inst_memory[16] <= 32'h008001EF;
-            inst_memory[17] <= 32'h00100113;
-            inst_memory[18] <= 32'h00910133;
-            inst_memory[19] <= 32'h0221A023;
-            inst_memory[20] <= 32'h00210063;
-
-
-        end
+    // ========================================================================
+    // INSTRUCTION MEMORY INITIALIZATION
+    // ========================================================================
+    // Option 1: Load from file (ACTIVE - Recommended for flexibility)
+    initial begin
+        $readmemh("memory_file.mem", inst_memory); // Load instructions from a file
     end
 
-
-
-
-
-
-
-    // initial begin
-    //      $readmemh("memory_file.mem", inst_memory); // Load instructions from a file
-    // end
-    
+    // Option 2: Hardcoded initialization (COMMENTED OUT - For reference only)
+    // Use this if you want to hardcode a test program instead of loading from file
+    /*
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            inst_memory[0] <= 32'h00500113;  // addi x2, x0, 5
+            inst_memory[1] <= 32'h00C00193;  // addi x3, x0, 12
+            inst_memory[2] <= 32'hFF718393;  // addi x7, x3, -9
+            inst_memory[3] <= 32'h0023E233;  // or x4, x7, x2
+            inst_memory[4] <= 32'h0041F2B3;  // and x5, x3, x4
+            inst_memory[5] <= 32'h004282B3;  // add x5, x5, x4
+            inst_memory[6] <= 32'h02728863;  // beq x5, x7, end
+            inst_memory[7] <= 32'h0041A233;  // slt x4, x3, x4
+            inst_memory[8] <= 32'h00020463;  // beq x4, x0, around
+            inst_memory[9] <= 32'h00000293;  // addi x5, x0, 0
+            inst_memory[10] <= 32'h0023A233; // slt x4, x7, x2
+            inst_memory[11] <= 32'h005203B3; // add x7, x4, x5
+            inst_memory[12] <= 32'h402383B3; // sub x7, x7, x2
+            inst_memory[13] <= 32'h0471AA23; // sw x7, 84(x3)
+            inst_memory[14] <= 32'h06002103; // lw x2, 96(x0)
+            inst_memory[15] <= 32'h005104B3; // add x9, x2, x5
+            inst_memory[16] <= 32'h008001EF; // jal x3, end
+            inst_memory[17] <= 32'h00100113; // addi x2, x0, 1
+            inst_memory[18] <= 32'h00910133; // add x2, x2, x9
+            inst_memory[19] <= 32'h0221A023; // sw x2, 0x20(x3)
+            inst_memory[20] <= 32'h00210063; // beq x2, x2, done
+        end
+    end
+    */
 
     assign instruction_out =  inst_memory[inst_mem_in[11:2]]; // Word-aligned access (pc[31:2] for 1024 words)
+
 
 endmodule
 
@@ -1173,14 +1173,19 @@ module alu (
     wire [31:0] shift_left, shift_right_logical, shift_right_arithmetic;
     wire [31:0] xor_result;
     
-    assign mux1 = (alu_control[0] == 1'b0) ? b : ~b; // Mux for ADD/SUB
+    // Fix for SLTU: Force subtraction mode for alu_control = 0110
+    // SLTU needs A-B comparison, so we need to invert B and add 1 (two's complement)
+    wire force_sub_for_sltu;
+    assign force_sub_for_sltu = (alu_control == 4'b0110); // SLTU/SLTIU
+    
+    assign mux1 = ((alu_control[0] == 1'b1) || force_sub_for_sltu) ? ~b : b; // Mux for ADD/SUB
 
-    assign {cout,sum} = a + mux1 + alu_control[0]; // Sum for ADD/SUB
+    assign {cout,sum} = a + mux1 + (alu_control[0] | force_sub_for_sltu); // Sum for ADD/SUB
 
     assign slt = sum[31] ^ overflow; // Set Less Than for SLT
     assign sltu = ~cout; // Set Less Than Unsigned
 
-    // Bitwise operations
+    // Bitwise operations 
     assign xor_result = a ^ b;
 
     // Shift operations
@@ -1341,4 +1346,3 @@ module mux_4to1 (
                         (mux_select == 2'b10) ? mux_input_2 :
                         mux_input_3; // 2'b11
 endmodule
-
