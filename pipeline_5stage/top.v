@@ -669,7 +669,11 @@ data_memory data_mem (
     assign alu_result_out_mem = alu_result_reg;
     assign pc_adder_out_mem = pc_adder_reg;
     assign write_reg_addr_out_mem = write_reg_addr_reg;
-    assign alu_result_out_mem_haz = alu_result_in;
+    // CORRECTION: Forward the actual result based on result_src including MEM data
+    assign alu_result_out_mem_haz = (result_src == 2'b00) ? alu_result_in :
+                                    (result_src == 2'b01) ? mem_data_out :
+                                    (result_src == 2'b10) ? pc_adder_in :
+                                    imm_ext_in; // 2'b11
     assign write_reg_addr_out_mem_haz = write_reg_addr_in;
     assign reg_write_mem_out_haz = reg_write;
     assign imm_ext_out_mem = imm_ext_reg;
@@ -745,7 +749,9 @@ module hazard(
                 (write_reg_addr_mem_hazard != 5'd0) && 
                 (write_reg_addr_mem_hazard == source1_addr_hazard)) begin
                 forwardA_hazard_register = 2'b10;
-            end else if ((reg_write_wb_hazard == 1'b1) && 
+            end
+            if ((forwardA_hazard_register == 2'b00) && 
+                (reg_write_wb_hazard == 1'b1) && 
                 (write_reg_addr_wb_hazard != 5'd0) && 
                 (write_reg_addr_wb_hazard == source1_addr_hazard)) begin
                 forwardA_hazard_register = 2'b01;
@@ -754,7 +760,9 @@ module hazard(
             // forwardB logic
             if((reg_write_mem_hazard == 1'b1) && (write_reg_addr_mem_hazard != 5'd0) && (write_reg_addr_mem_hazard == source2_addr_hazard)) begin
                 forwardB_hazard_register = 2'b10;
-            end else if ((reg_write_wb_hazard == 1'b1) && 
+            end
+            if ((forwardB_hazard_register == 2'b00) && 
+                (reg_write_wb_hazard == 1'b1) && 
                 (write_reg_addr_wb_hazard != 5'd0) && 
                 (write_reg_addr_wb_hazard == source2_addr_hazard)) begin 
                 forwardB_hazard_register = 2'b01;
@@ -793,7 +801,7 @@ module program_counter (
         if (rst) begin
             pc_reg <= 32'd0; // Reset PC to 0
         end else if (!stallF) begin
-            pc_reg <= pc_in; // Update PC with new value
+            pc_reg <= pc_in;
         end
     end
 
@@ -807,18 +815,15 @@ module instruction_memory (
     input rst,clk,
     output [31:0] instruction_out
 );
-    reg [31:0] inst_memory [1023:0]; // 1024 words of 32-bit memory
+    reg [31:0] inst_memory [0:16383]; // 16384 words (64KB) memory
     integer i;
 
-    // ========================================================================
     // INSTRUCTION MEMORY INITIALIZATION
-    // ========================================================================
-    // Option 1: Load from file (ACTIVE - Recommended for flexibility)
     initial begin
-        $readmemh("memory_file.mem", inst_memory); // Load instructions from a file
-    end
+        $readmemh("memory_file.mem", inst_memory);  // Explicitly specify range for descending array
+     end
 
-    // Option 2: Hardcoded initialization (COMMENTED OUT - For reference only)
+
     // Use this if you want to hardcode a test program instead of loading from file
     /*
     always @(posedge clk or posedge rst) begin
@@ -848,7 +853,7 @@ module instruction_memory (
     end
     */
 
-    assign instruction_out =  inst_memory[inst_mem_in[11:2]]; // Word-aligned access (pc[31:2] for 1024 words)
+    assign instruction_out =  inst_memory[inst_mem_in[15:2]]; // Support up to 16K words (64KB)
 
 
 endmodule
@@ -1124,7 +1129,7 @@ module sign_extension (
     // SRAI: funct3 = 101, funct7 = 0100000
     assign is_srai = (imm_ext_input[14:12] == 3'b101) && (imm_ext_input[30] == 1'b1);
 
-    assign is_shift_imm = (imm_select == 3'b000) && (is_slli || is_srli || is_srai);
+    assign is_shift_imm = (imm_ext_input[6:0] == 7'b0010011) && (imm_select == 3'b000) && (is_slli || is_srli || is_srai);
 
     reg [31:0] imm_ext_output_register;
     
@@ -1173,8 +1178,7 @@ module alu (
     wire [31:0] shift_left, shift_right_logical, shift_right_arithmetic;
     wire [31:0] xor_result;
     
-    // Fix for SLTU: Force subtraction mode for alu_control = 0110
-    // SLTU needs A-B comparison, so we need to invert B and add 1 (two's complement)
+    // SLTU:
     wire force_sub_for_sltu;
     assign force_sub_for_sltu = (alu_control == 4'b0110); // SLTU/SLTIU
     
@@ -1238,22 +1242,22 @@ module data_memory (
 
     output [31:0] data_mem_read_data  // Keep as wire
 );
-    reg [31:0] data_memory [1023:0];
+    reg [31:0] data_memory [0:65535]; // 256KB - ascending range for correct $readmemh loading
     
     integer i;
 
     wire [1:0] byte_offset;
-    wire [9:0] word_address;
+    wire [15:0] word_address; // 16 bits for 64K words
     wire [31:0] word_data;
     
     assign byte_offset = data_mem_address[1:0];
-    assign word_address = data_mem_address[11:2];
+    assign word_address = data_mem_address[17:2];
     assign word_data = data_memory[word_address];
 
     // Write logic
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            for (i = 0; i < 1024; i = i + 1) begin
+            for (i = 0; i < 65536; i = i + 1) begin
                 data_memory[i] <= 32'd0;
             end
         end else if (data_mem_write_enable) begin
@@ -1329,6 +1333,7 @@ module data_memory (
     end
 
     assign data_mem_read_data = read_data_temp;
+
 
 endmodule
    
