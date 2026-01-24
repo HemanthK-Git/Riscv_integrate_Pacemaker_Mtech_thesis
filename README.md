@@ -257,15 +257,3 @@ For detailed reports, see `verification/*/simulation_results/*_verification_repo
 4.  **Digital Design and Computer Architecture (RISC-V Edition)**: Harris & Harris
 
 ---
-
-## 📧 Contact
-**Hemanth Kumar**  
-*RISC-V Processor Design & Verification Engineer*
-
-For questions, collaboration opportunities, or technical discussions, feel free to reach out!
-
----
-
-*Project Developed and Verified by Hemanth Kumar | January 2026*
-
-**License**: This project is available for educational and portfolio purposes.
